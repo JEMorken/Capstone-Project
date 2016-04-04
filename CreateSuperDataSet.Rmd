@@ -1,0 +1,235 @@
+---
+title: "Create Base Crime Data Frame"
+author: "Jonathan Morken"
+date: "March 19, 2016"
+output: html_document
+---
+
+# Creating the base data file for later mapping, etc.
+ 
+## Introduction
+I will be combining data on Chicago crime patterns with other sources [geo-spatial polygons, Mass transit station locations, police stations locations, and demographics], in the hopes of finding robust evidence to suggest new station locations and/or policing patterns.  This file creates one large base CSV for use in later files.
+
+### Sources
+I am using crime data from the [Chicago Police Department](https://data.cityofchicago.org/), shape files and census data from the same source, and weather data from [Weather Underground](https://www.wunderground.com/history/airport/KMDW/2016/3/5/CustomHistory.html?req_city=Chicago%20Midway&req_state=IL&reqdb.zip=60499&reqdb.magic=11&reqdb.wmo=99999).  You can also pull this data from the data folder for this project on Github.  I also found a community-census tract mapping table courtesy of [Rob Paral](http://robparal.blogspot.com/2012/04/census-tracts-in-chicago-community.html).
+
+Not all of the data is pulled in here, some is left for subsequent documents.  Note, I have intentionally created more data frames than necessary so any user can inspect each one for the differences.
+```{r, message = FALSE, warning=FALSE}
+#Load packages required for spatial statistics analysis
+library(sp)
+library(car)
+
+#Packages for transforming data and calculating distances.
+library(readr)
+library(rgdal)
+library(rgeos)
+library(dplyr)
+library(FNN)
+library(magrittr)
+library(lubridate) #dealing with time
+library(classInt) #not using
+```
+ 
+### Read in the crime data  
+```{r read_data}
+setwd("D:/Users/Jonathan Morken/Documents/GitHub/Capstone Project/")
+crime_df <- read.table("data/crimestxt.txt", sep = "\t", header = TRUE)
+```
+
+#### A quick look at the data structure shows 17 variables:
+```{r view_structure}
+str(crime_df)
+```
+
+#### We need to change the format of the following variables:
+  - Make "Beat" a factor  
+  - Make "Description" a factor  
+  - Make "District" a factor  
+  - Make "Community.Area" a factor  
+  - Make "Date" POSIXct  
+  - Split out time, day and month  
+  - Subset the data to get rid of those records without lat/lons (done in a subsequent section).  
+
+```{r format_variables}
+crime_df$Beat <- as.factor(crime_df$Beat)
+crime_df$Description <- as.factor(crime_df$Description)
+crime_df$District <- as.factor(crime_df$District)
+crime_df$Community.Area <- as.factor(crime_df$Community.Area)
+crime_df$Date <- parse_date_time(crime_df$Date, orders="mdy hm", tz = "America/Chicago")
+crime_df <- mutate(crime_df,Month = month(Date))
+crime_df <- mutate(crime_df,DayinMonth = mday(Date))
+crime_df <- mutate(crime_df,DayofWeek = wday(Date, label = TRUE, abbr = TRUE))
+crime_df <- mutate(crime_df,Hour = hour(Date))
+```
+
+### Pull in and format other data including weather, census, crime categories, hour categories, transit locations, and police department locations.
+Feel free to explore the resulting data frames on your own.
+```{r add_additional_data}
+
+#Weather Data (Recode "trace" precipitation = 0, add year month and day for joining data)
+weather_df <- read.csv("data/WeatherReduced.csv") 
+weather_df$Date <- parse_date_time(weather_df$Date, orders="mdy hm")
+weather_df$PrecipitationIn <- recode(weather_df$PrecipitationIn, "T = 0")
+weather_df$PrecipitationIn <- as.integer(weather_df$PrecipitationIn)
+weather_df <- mutate(weather_df,Year = year(Date))
+weather_df <- mutate(weather_df,Month = month(Date))
+weather_df <- mutate(weather_df,DayinMonth = mday(Date))
+
+#Census and Population Data (Limit columns, classify community area as factor, join population and general census data.)
+census_df <- read.csv("data/CensusData.csv", sep = "\t", header = TRUE)
+census_df$Community.Area <- as.factor(census_df$Community.Area)
+population_df <- read.csv("data/PopulationByCommunity.csv", sep = ",", header = TRUE)
+population_df$Community.Area <- as.factor(population_df$Community.Area)
+census_df <- left_join(census_df,population_df, by = "Community.Area")
+
+#Crime Category Mapping
+Crime_Class_Map <- read.table("data/CrimeClassMapping.txt", sep = "\t", header = TRUE)
+
+#Hour Categories Mapping
+Hour_Categories <- read.csv("data/HourCategories.csv", sep = ",", header = TRUE)
+
+#Pull in Mass Transit and Police Department Locations and create separate data frames for easy inspection later.
+Mass_Transit <- read.csv("Data/CTAListofLStops.csv", sep = ",", header = TRUE)
+Mass_Transit <- Mass_Transit[,c(1,2,3,15,16)]
+Transit_Coord <- Mass_Transit
+
+Police_Dps <- read.csv("Data/PoliceStations.csv", sep = ",", header = TRUE)
+Police_Dps <- Police_Dps[,c(1,6,7)]
+Police_Coord <- Police_Dps
+```
+
+#### Join census, weather, crime categories and hour categories to crime data
+```{r Join_to_Crime Data, warning=FALSE}
+
+#Join to crime_df
+crime_df <- inner_join(crime_df,Crime_Class_Map,by = c("Primary.Type","Description"))
+crime_df <- left_join(crime_df,census_df,by = "Community.Area")
+crime_df <- left_join(crime_df,weather_df,by = c("Year","Month","DayinMonth"))
+crime_df$Community.Area <- as.factor(crime_df$Community.Area)
+crime_df$Year <- as.factor(crime_df$Year)
+crime_df <- left_join(crime_df,Hour_Categories, by = c("Hour"))
+```
+
+### Calculating Proximity Variables
+
+#### Make coordinates planar for determining closest PD and transit station 
+I.e. We will use these data frames for calculating which PD/Transit station is closest to each crime and which PD is closest to each transit station.
+```{r Make_Planar}
+
+#Mass Transit
+coordinates(Transit_Coord) <- ~ Longitude+Latitude
+proj4string(Transit_Coord) <- CRS("+init=epsg:4326") #Latitude/Longitude
+data.Transit <- spTransform(Transit_Coord, CRS("+init=epsg:2790")) # set for IL plane
+
+#Police Departments
+coordinates(Police_Coord) <- ~ Longitude+Latitude
+proj4string(Police_Coord) <- CRS("+init=epsg:4326") #Latitude/Longitude
+data.PD <- spTransform(Police_Coord, CRS("+init=epsg:2790")) #set for IL plane
+
+#Crimes
+crime_df_no_NAs <- subset(crime_df, !is.na(Longitude)) #Remove NAs from Crime data
+Crime_Planar <- crime_df_no_NAs[, c(1,15,16)]          #Shrink crime data frame for the sake of memory.  
+coordinates(Crime_Planar) <- ~ Longitude+Latitude
+proj4string(Crime_Planar) <- CRS("+init=epsg:4326") #Latitude/Longitude
+data.CrimePlanar <- spTransform(Crime_Planar, CRS("+init=epsg:2790")) #set for IL plane
+```
+
+#### Get closest PD and Transit location for each crime then join to Crime DataFrame
+```{r Ascertain_Closest_Stations}
+
+#Police Station Closest to Each Crime
+d <- get.knnx(coordinates(Police_Coord), coordinates(Crime_Planar), k=1)
+# str(d)
+
+#Transit Station Closest to Each Crime
+d2 <- get.knnx(coordinates(Transit_Coord), coordinates(Crime_Planar), k=1)
+# str(d2)
+
+#Police Department closest to Each Transit Station
+d3 <- get.knnx(coordinates(Police_Coord), coordinates(Transit_Coord), k=1)
+# str(d3)
+
+#Convert results to data frames; note that the distance results are in degrees and not quite correct when transformed into kilometers.  As such, we will recalculate these distances via a formula below.
+d_df <- as.data.frame(d)
+d_df <- rename(d_df, PD.index = nn.index)
+d_df <- rename(d_df, PD.dist = nn.dist)
+d2_df <- as.data.frame(d2)
+d2_df <- rename(d2_df, Transit.index = nn.index)
+d2_df <- rename(d2_df, Transit.dist = nn.dist)
+d3_df <- as.data.frame(d3)
+d3_df <- rename(d3_df, PD.index = nn.index)
+d3_df <- rename(d3_df, PD.dist = nn.dist)
+
+#Bind d and d2 to original data frame. 
+crime_df_no_NAs <- bind_cols(crime_df_no_NAs,d_df,d2_df)
+crime_df_no_NAs <- as.data.frame(crime_df_no_NAs)
+
+#Change PD and Transit data frames to include row number
+Police_Dps$PD.index <- seq.int(nrow(Police_Dps))
+Mass_Transit$Transit.index <- seq.int(nrow(Mass_Transit))
+
+#Join closest PD and transit coordinates to crime data for correctly calculating distance.
+crime_df_no_NAs <- left_join(crime_df_no_NAs,Police_Dps, by = "PD.index")
+crime_df_no_NAs <- left_join(crime_df_no_NAs,Mass_Transit, by = "Transit.index")
+crime_df_no_NAs <- rename(crime_df_no_NAs, Longitude.PD = Longitude.y)
+crime_df_no_NAs <- rename(crime_df_no_NAs, Latitude.PD = Latitude.y)
+crime_df_no_NAs <- rename(crime_df_no_NAs, Longitude.Transit = Longitude)
+crime_df_no_NAs <- rename(crime_df_no_NAs, Latitude.Transit = Latitude)
+crime_df_no_NAs <- rename(crime_df_no_NAs, Longitude.Crime = Longitude.x)
+crime_df_no_NAs <- rename(crime_df_no_NAs, Latitude.Crime = Latitude.x)
+crime_df_no_NAs <- rename(crime_df_no_NAs, Closest.District = DISTRICT)
+crime_df_no_NAs <- rename(crime_df_no_NAs, Community.Name = COMMUNITY.AREA.NAME.x)
+crime_df_no_NAs <- rename(crime_df_no_NAs, Station.Name = STATION_NAME)
+
+#Bind d3 to Mass_Transit data frame
+Mass_Transit <- bind_cols(Mass_Transit,d3_df)
+Mass_Transit <- as.data.frame(Mass_Transit)
+
+#Join closest PD from d3 to transit data for correctly caluclating distance.
+Mass_Transit <- left_join(Mass_Transit,Police_Dps, by = "PD.index")
+Mass_Transit <- rename(Mass_Transit, Longitude.PD = Longitude.y)
+Mass_Transit <- rename(Mass_Transit, Latitude.PD = Latitude.y)
+Mass_Transit <- rename(Mass_Transit, Longitude = Longitude.x)
+Mass_Transit <- rename(Mass_Transit, Latitude = Latitude.x)
+```
+
+#### Create formula to better approximate Euclidian distance between two points in kilometers
+```{r Formula_for_correct_Euclidian_distance}
+#Create formula to calculate distance between two points in kilometers (this calculation can also be found in the "fossil" package.  Note 6378.145 is the avg of the earth's radius.
+earth.dist <- function (long1, lat1, long2, lat2)
+{
+rad <- pi/180
+a1 <- lat1 * rad
+a2 <- long1 * rad
+b1 <- lat2 * rad
+b2 <- long2 * rad
+dlon <- b2 - a2
+dlat <- b1 - a1
+a <- (sin(dlat/2))^2 + cos(a1) * cos(b1) * (sin(dlon/2))^2
+c <- 2 * atan2(sqrt(a), sqrt(1 - a))
+R <- 6378.145
+d <- R * c
+return(d)
+}
+```
+
+#### Add correct distances to crime data and mass transit data frame
+Note, you could replace PD.dist and Transit.dist instead of creating a new variable, but i am leaving them along for the viewer's sake. 
+```{r Calculate_correct_distances}
+crime_df_no_NAs$PD.Dist.km <- earth.dist(crime_df_no_NAs$Longitude.Crime,crime_df_no_NAs$Latitude.Crime,crime_df_no_NAs$Longitude.PD,crime_df_no_NAs$Latitude.PD)
+
+crime_df_no_NAs$Transit.Dist.km <- earth.dist(crime_df_no_NAs$Longitude.Crime,crime_df_no_NAs$Latitude.Crime,crime_df_no_NAs$Longitude.Transit,crime_df_no_NAs$Latitude.Transit)
+
+Mass_Transit$PD.Dist.km <- earth.dist(Mass_Transit$Longitude,Mass_Transit$Latitude,Mass_Transit$Longitude.PD,Mass_Transit$Latitude.PD)
+```
+
+### Write final mass data files
+Again, I would normally recommend replacing data frames and variables along the way, but i did not do that on this exercise for the sake of the viewer tracking differences.  We will cut out excess columns in subsequent analysis files.
+```{r Write_Final_Data_Files}
+#Write joined files [crime superset file and Mass transit file with distance to closest PD]:
+#write.csv(crime_df_no_NAs, file = "Data/JoinedDataWithDist.csv", row.names = FALSE)
+#write.csv(Mass_Transit, file = "Data/CTAListofLStopsWithPDDistance.csv", row.names = FALSE)
+
+```
+
+## See the next file for analysis and plots.

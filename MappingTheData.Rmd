@@ -1,0 +1,942 @@
+---
+title: "Analyzing Chicago Crime to Inform Resource Deployment"
+author: "Jonathan Morken"
+date: "March 19, 2016"
+output: html_document
+---
+
+#### Special Note for R Markdown File Only
+__Special Note:__ While this R Markdown files serves as the source for all of the materials found in this project's writeup, this file has a slightly different purpose and will not follow the paper's order. Essentially, I want users to be able to follow this file as if it were a tutorial.  As such, most of the code will be viewable, I will create more data frames than necessary so the user can inspect differences, and the order of creation will be different to similar visualizations together.  To see the intended narrative and order for story purposes, read the writeup.
+
+## Abstract
+The purpose of this analysis was to examine the spatial characteristics of Chicago crime data and to explore relationships between the density of that crime, proximity to locations of interest (Police and Transit Stations), and community demographics in order to inform further investment in police infrastructure.  We also examined some of the temporal characteristics of crime to inform resource management/deployment.  Our initial hypothesis was as follows:  
+
+1. Crime rates (as measured by count/km^2^) decrease as one moves closer to a police department 
+    + This assumes that proximity equates to higher police presence which acts as a deterrent.
+    + Alternatively, police may be more likely to make an arrest for a crime where they most regularly patrol, resulting in increased activity as one gets closer to a police station. This would cause us to reject this section of our hypothesis.
+2. Crime rates increase as one moves closer to a transit station.
+
+The data from 2013-01-01 through 2014-12-31 actually indicated that crime rates do not decrease but actually increase as one moves closer to a police station, causing us to reject part 1 of the hypothesis.  However, crime rates do increase exponentially as one approaches a transit station, supporting section two of our initial hypothesis.  Our final recommendation as it concerns police infrastructure can be found in the conclusion.  
+
+******
+
+## Introduction
+The “client” has requested analytic support to determine how to best invest in new police infrastructure. The purpose of this analysis is to determine significant spatial, temporal, and demographic crime patterns that could be used to guide investments and/or improve policing patterns.  We will examine Chicago Crime Data from several angles and utilize multiple visual methods including the following:
+
+* Histograms; Frequency of crime by type relative to
+    + Police presence (proximity to PD’s)
+    + Proximity to Transit stations, 
+    + Hours of the day
+    + Days of the week,
+    + Community
+* A choropleth map showing crime density by community
+* Point analysis for the city as a whole that will include spatial standard deviation ellipses.
+* Crime heat-maps
+* Scatterplots and linear model analysis to determine the efficacy of a basic linear model in predicting crime density. This model could be used to inform policing patterns and/or future station locations.
+
+Our initial, spatial hypothesis:  
+
+1. Crime rates (as measured by count/km^2^) decrease as one moves closer to a police department 
+    + This assumes that proximity equates to higher police presence which acts as a deterrent.
+         + Note: for the sake of simplicity we assume that each police department employs the same number of officers.  This could be tightened with actual weights if we wish to extend our engagement.
+    + Alternatively, police may be more likely to make an arrest for a crime where they most regularly patrol, resulting in increased activity as one gets closer to a police station. This would cause us to reject this section of our hypothesis.
+2. Crime rates increase as one moves closer to a transit station.
+
+Assuming both parts of the hypothesis prove true and the spatial relationships are strong, we will likely suggest building small, permanent outposts in the city’s most crime dense communities, at their most affected transit stations.  Such a strategy could reduce crime rates and place our force in the most best position to affect crime in their communities.
+  
+## R Packages for Spatial Data Analysis
+Here are links to a few of the spatial and graphical packages used herein:
+ 
+* [sp](https://cran.r-project.org/web/packages/sp/index.html): This package provides classes and methods for spatial data; utility functions for plotting maps, working with coordinates, etc.
+* [rgdal](https://cran.r-project.org/web/packages/rgdal/index.html): This package provides methods for working with importing and exporting different raster and vector geospatial data formats,coordinate reference systems, projections, etc.  I am using it to transform spatial data for mapping and planar data for calculating shortest Euclidian distances.
+* [rgeos](https://cran.r-project.org/web/packages/rgeos/index.html): Provides functions for handling operations on topologies.
+* [ggplot2](http://ggplot2.org/): The most popular package for data visualisation by [Hadely Wickham](http://had.co.nz/)
+* [ggmap](https://cran.r-project.org/web/packages/ggmap/index.html): Provides functions to visualize spatial data on top of static maps from sources like Google Maps, Open Steet Maps, cloudmade and stamen.
+
+## The Data
+
+### Background
+The superset of data is a combined set of files including Chicago crime data, geo-spatial polygons, Mass transit station locations, police department locations, demographics, Categorization tables, weather data, and more.  All requisite data files can be found in the appropriate folder on Github. 
+While the crime data currently covers dates from 2013-01-01 to 2014-12-31, this could be easily updated at will.  Currently, I have intentionally left 2015 data out, as I am using it as test data for a separate analysis.
+
+### Sources
+Base crime data, shape files, coordinate files, and census data comes from the data repository at the [City of Chicago website](https://data.cityofchicago.org/).  Although not used in this iteration of analysis, weather data was downloaded from the [Weather Underground](https://www.wunderground.com/history/airport/KMDW/2016/3/5/CustomHistory.html?req_city=Chicago%20Midway&req_state=IL&reqdb.zip=60499&reqdb.magic=11&reqdb.wmo=99999).  This analysis also uses a community-census tract mapping table courtesy of [Rob Paral](http://robparal.blogspot.com/2012/04/census-tracts-in-chicago-community.html). 
+The base sources are then subsequently scrubbed, reformatted, joined, etc. in R.  This can be viewed via the RMarkdown file “CreateSuperDataSet.”
+
+### General Data Structure Notes
+Each tuple in the base crime dataset equates to 1 crime.  While the base crime data is robust, this analysis required a decent amount of “munging,” mutating, cleansing, etc.  It does includes some null fields, duplications where a given crime may have had more than one victim, and some erroneous location data such as crimes occurring within a police station, outside of city limits, or within a different state, etc . Some of those characteristics, like duplications for more than one victim, are appropriate and left alone.  Missing/Erroneous spatial data is dropped.  You can see more detail and follow along via the appropriate file on Github.
+Most of the Demographic data is provided by the city of Chicago’s Department of Public Health as underlying pieces to their [“Hardship Index”](http://www.chicagomag.com/Chicago-Magazine/The-312/May-2012/The-Geography-of-Economic-Hardship-in-Chicago/).  It includes the following: 
+
+* Percent of crowded housing
+* Percent of households below poverty
+* Unemployment rate, 16+
+* Percent aged 25+ without a high school diploma
+* Percent aged under 18 or 65+
+* Per capita income
+
+In order to keep the files robust, but manageable, I have created categories for each primary type of crime.  These Meta Categories were created by grouping crime descriptions as closely to federal definitions as possible. Categories are as follows:
+
+* Violent Crimes
+    + Assault
+    + Battery
+    + Criminal Sexual Assault
+    + Homicide
+    + Etc.
+* Non-Violent Property Crime
+    + Arson 
+    + Burglary (ex Home invasion)
+    + Motor Vehicle Theft
+    + Etc.
+* Financial Crime/Fraud
+    + Deceptive Practices (embezzlement, etc.)
+    + Intimidation - Extortion
+    + Money Laundering
+    + Etc.
+* Other 
+    + Traffic violatons
+    + Noise violations
+    + Non-violent prostitution
+    + Non-violent narcotic violations
+    + Etc.
+
+__Note:__  The full map is viewable in Github.  This analysis displays all 4 types in initial plots but is trimmed to just Violent Crimes and Non-Violent Property Crime for all mapping exercises.
+
+Hour Categories are split into 4 hour increments as follows:  
+
+* 7am - 11am is "AM Commute"
+* 11am - 3pm is "Lunch"
+* 3pm - 7pm is "PM Commute"
+* 7pm to 11pm is "Evening"
+* 11pm - 3am is considered "Night"
+
+### Load initial libraries
+```{r Load_Packages, echo=TRUE, include = FALSE, message = FALSE, warning=FALSE}
+#Note some packages added later, so the user can see when they became necessary for the analysis.
+
+#Basic Packages for visualizations
+library(ggmap)
+library(ggplot2)
+library(ggthemes)
+library(RColorBrewer)
+library(scales)
+
+#Packages for reading in data 
+library(readr)
+library(dplyr)
+library(magrittr)
+```
+ 
+### Read in the Superset of data  
+```{r read_data}
+setwd("D:/Users/Jonathan Morken/Documents/GitHub/Capstone Project/")
+crime_df_no_NAs <- read.csv("data/JoinedDataWithDist.csv", sep = ",", header = TRUE)
+```
+
+We need to cut extraneous columns and change the format of the following variables:
+* Make "Beat" a factor  
+* Make "District" a factor  
+* Add order to Hour.Category
+* Add order to Day of Week factor
+
+```{r FormatCrimeDataFrame, message = FALSE, warning=FALSE}
+#Remove unnecessary columns
+crime_df_no_NAs <- select(crime_df_no_NAs, ID, Meta.Category, Primary.Type, Beat, District, Community.Name, PERCENT.OF.HOUSING.CROWDED, PERCENT.HOUSEHOLDS.BELOW.POVERTY, PERCENT.AGED.16..UNEMPLOYED, PERCENT.AGED.25..WITHOUT.HIGH.SCHOOL.DIPLOMA, HARDSHIP.INDEX, PER.CAPITA.INCOME, Total.2010, Year, Month, DayinMonth, DayofWeek, Hour, Hour.Category, Latitude.Crime, Longitude.Crime, Closest.District, PD.Dist.km, Transit.index, Transit.Dist.km)
+
+#Fix column name formats for the sake of standardization.
+crime_df_no_NAs <- rename(crime_df_no_NAs, Percent.of.Housing.Crowded = PERCENT.OF.HOUSING.CROWDED)
+crime_df_no_NAs <- rename(crime_df_no_NAs, Percent.Households.Below.Poverty = PERCENT.HOUSEHOLDS.BELOW.POVERTY)
+crime_df_no_NAs <- rename(crime_df_no_NAs, Percent.Aged.16.Unemployed = PERCENT.AGED.16..UNEMPLOYED)
+crime_df_no_NAs <- rename(crime_df_no_NAs, Percent.Aged.25.Without.Hish.School.Diploma = PERCENT.AGED.25..WITHOUT.HIGH.SCHOOL.DIPLOMA)
+crime_df_no_NAs <- rename(crime_df_no_NAs, Hardship.Index = HARDSHIP.INDEX)
+crime_df_no_NAs <- rename(crime_df_no_NAs, Per.Capita.Income = PER.CAPITA.INCOME)
+crime_df_no_NAs <- rename(crime_df_no_NAs, Census.Population = Total.2010)
+
+#Change formats
+crime_df_no_NAs$Beat <- as.factor(crime_df_no_NAs$Beat)
+crime_df_no_NAs$District <- as.factor(crime_df_no_NAs$District)
+
+#Make Hour Category an ordered factor and order them appropriately
+print(levels(crime_df_no_NAs$Hour.Category))
+crime_df_no_NAs$Hour.Category <- factor(crime_df_no_NAs$Hour.Category, levels(crime_df_no_NAs$Hour.Category)[ c(6,1,3,5,2,4)])
+
+#Make DayofWeek an ordered factor
+print(levels(crime_df_no_NAs$DayofWeek))
+crime_df_no_NAs$DayofWeek <- factor(crime_df_no_NAs$DayofWeek, levels(crime_df_no_NAs$DayofWeek)[ c(2,6,7,5,1,3,4)])
+
+#Calculate Number of Years in data for use in annualized metrics.
+Num_Years_in_Data <- as.integer(length(unique(crime_df_no_NAs$Year)))
+
+#View data structure
+str(crime_df_no_NAs)
+```
+
+## Proximity Analysis (Section 5 in the writeup)
+
+### Effects of police presence on crime rates 
+Contrary to our initial hypothesis, crime rates do not decrease as one gets closer to a given police department.  While the effects are not extreme, crime rates actually appear to increase:
+
+__Note:__ The increasing crime density table and graph images can be found in the image folder in the Github project.
+
+```{r, figwidth = 30, fig.align='center', echo = TRUE, message = FALSE, warning = FALSE}
+#Graph Meta.category vs. Distance to closest PD
+g1 <- ggplot(data = crime_df_no_NAs,aes(x = PD.Dist.km)) +
+  scale_x_continuous() +
+  scale_y_continuous(labels=comma) + 
+  geom_hline(yintercept=0, size=0.4, color="black") +
+  geom_histogram(breaks=seq(0, 5, by = 0.25), fill="#c0392b", alpha=0.75) +
+  scale_color_brewer(palette="Set1", name = "Meta.Category") + 
+  facet_wrap(~Meta.Category) +
+  labs(title = paste('Crime Proximity to Police Departments'),x = "Kilometers", y = "Occurrences") + 
+  theme_light()
+
+#Code to extract figures behind plot for increasing crime density analysis. Note remove the facet wrap layer on the above for this first.
+#head(ggplot_build(g1))
+```
+
+Some of the increase in the first ¼ kilometer may be due in part to incorrect location entries such as crimes occurring within police stations. However, the overall slope is meaningful.  While area shrinks 98% from a 2km radius to a ¼ km, density increases by 67%.  This would seem to support the alternative hypothesis that police presence does not have a dampening effect on crime, but that arrests actually increase with police patrols.
+
+```{r, figwidth = 30, fig.align='center', echo = FALSE, message = FALSE, warning = FALSE}
+#Create pdf or simply show graph
+##pdf('Images/g1.pdf')
+g1
+##dev.off()
+```
+
+### Mass Transit Locations (as represented by the L)
+Here the initial hypothesis appears to be correct.  Crime rate (density) clearly increases as one moves closer to a given transit station. Again, while area decreases 98% from a 2km radius to just a ¼ km, density increases by 985%.  This effect starts to flatten out beyond 2 square kilometers. 
+
+__Note:__ The increasing crime density table and graph images can be found in the image folder in the Github project.
+
+```{r, figwidth = 30, fig.align='center', echo = TRUE, message = FALSE, warning = FALSE}
+#Meta.category and Transit Location
+g2 <- ggplot(data = crime_df_no_NAs,aes(x = Transit.Dist.km)) +
+  scale_x_continuous() +
+  scale_y_continuous(labels=comma) + 
+  geom_hline(yintercept=0, size=0.4, color="black") +
+  geom_histogram(breaks=seq(0, 5, by = 0.25), fill="lightblue", alpha=0.75) +
+  scale_color_brewer(palette="Set1", name = "Meta.Category") + 
+  facet_wrap(~Meta.Category) +
+  labs(title = paste('Crime Proximity to Transit Stations'),x = "Kilometers", y = "Occurrences") + 
+  theme_light()
+
+#Code to extract figures behind plot for increasing crime density analysis. Note remove the facet wrap layer on the above for this first.
+#head(ggplot_build(g2))
+```
+
+This could be further refined with transit station volume, but that data is not currently available.  Regardless, it is clear that any future infrastructure investments must account for a city’s transit characteristics.
+
+```{r, figwidth = 30, fig.align='center', echo = FALSE, message = FALSE, warning = FALSE}
+#pdf('Images/g2.pdf')
+g2
+#dev.off()
+```
+
+##Temporal Analysis
+### Examine daily distribution of crime
+
+__Note:__ This occurs later in the writeup.
+
+Before we get to regression models, it may also be useful to examine some of the temporal characteristics of Chicago crime.  First, it does not appear that crime substantially differs by day of week.  Here are graphs showing all 4 categories.  
+
+__Note:__ The lack of statistical significance was corroborated by linear models not shown here.
+```{r, figwidth = 30, fig.align='center', echo = TRUE, message = FALSE, warning = FALSE}
+#Create grouped data set.
+crime_by_dayofweek <- subset(crime_df_no_NAs,!is.na(DayofWeek)) %>%
+  group_by(Meta.Category,Year,Month,DayinMonth, DayofWeek) %>%
+  summarise(Count = n())
+
+#Hour Category
+d1 <- ggplot(data = crime_by_dayofweek,aes(x = DayofWeek, y = Count)) +
+  scale_y_continuous(labels=comma) + 
+  geom_bar(stat = "identity", fill="lightgreen", alpha=0.75)+
+  scale_color_brewer(palette="Set1", name = "Meta.Category") +
+  facet_wrap(~Meta.Category) +
+  labs(title = paste('Crime by Day of Week'), x = "Day of Week", y = "Occurrences") + 
+  theme_light()
+
+#pdf('Images/d1.pdf')
+d1
+#dev.off()
+```
+
+The following boxplots display greater detail for the Violent Crimes and Non-Violent Property Crime categories.  It is interesting to note that property crimes fall on Saturday and Sunday while violent crimes rise.
+```{r, figwidth = 30, fig.align='center', echo = TRUE, message = FALSE, warning = FALSE}
+d2 <- ggplot(data = subset(crime_by_dayofweek,Meta.Category %in% c("Violent Crimes","Non-Violent Property Crime")),aes(x = DayofWeek, y = Count, colour = Meta.Category)) +
+  scale_y_continuous(labels=comma) + 
+  geom_boxplot(aes_string(colour="Meta.Category", fill="Meta.Category"), alpha=0.75)+
+  scale_color_brewer(palette="Set1", name = "Meta.Category") +
+  facet_wrap(~Meta.Category) +
+  labs(title = paste('Crime by Day of Week'), x = "Day of Week", y = "Occurrences") + 
+  theme_light() +
+  theme(legend.position = "none") 
+
+#pdf('Images/d2.pdf')
+d2
+#dev.off()
+
+```
+
+### Examine hourly distribution of crime
+Unlike day of week, there are large variances in crime frequency between hour categories:
+```{r, figwidth = 30, fig.align='center', echo = TRUE, message = FALSE, warning = FALSE}
+#Create grouped data set.
+crime_by_hour_category <- subset(crime_df_no_NAs,!is.na(Hour.Category)) %>%
+  group_by(Meta.Category,Year,Month,DayinMonth,Hour.Category) %>%
+  summarise(Count = n())
+
+#Hour Category
+h1 <- ggplot(data = crime_by_hour_category,aes(x = Hour.Category, y = Count)) +
+  scale_y_continuous(labels=comma) + 
+  geom_bar(stat = "identity", fill="lightgreen", alpha=0.75)+
+  coord_flip() +
+  scale_color_brewer(palette="Set1", name = "Meta.Category") +
+  facet_wrap(~Meta.Category) +
+  labs(title = paste('Daily Crime per Hour Category'), x = "Hour Category", y = "Occurrences") + 
+  theme_light()
+
+#pdf('Images/h1.pdf')
+h1
+#dev.off()
+```
+
+The following boxplots display greater detail for the Violent Crimes and Non-Violent Property Crime categories. Note how property crimes peak over lunch and the PM commute, while violent crimes are more common later in the day. This distribution is statistically significant and will be explored more in the regression models below.
+```{r, figwidth = 30, fig.align='center', echo = TRUE, message = FALSE, warning = FALSE}
+h2 <- ggplot(data = subset(crime_by_hour_category,Meta.Category %in% c("Violent Crimes","Non-Violent Property Crime")),aes(x = Hour.Category, y = Count, colour = Meta.Category)) +
+  scale_y_continuous(labels=comma) + 
+  geom_boxplot(aes_string(colour="Meta.Category", fill="Meta.Category"), alpha=0.75)+
+  scale_color_brewer(palette="Set1", name = "Meta.Category") +
+  facet_wrap(~Meta.Category) +
+  labs(title = paste('Daily Crime by Hour Category'), x = "Hour Category", y = "Occurrences") + 
+  theme_light() +
+  theme(legend.position = "none") 
+
+#pdf('Images/h2.pdf')
+h2
+#dev.off()
+
+```
+
+## Mapping the data
+From here on, We will move toward mapping the data.  
+
+### Read in community spatial polygons
+```{r ReadShapefile, message=FALSE, warning=FALSE}
+library(rgdal)
+library(geosphere)
+
+Chicago_shp <- readOGR(dsn = "data/Boundaries - Community Areas (current)", layer = "geo_export_70e8c7f3-e054-4acc-b740-ee8916d5fa41")
+class(Chicago_shp)
+
+#Add in Area for each community in km^2
+Chicago_shp@data$Poly_Area <- areaPolygon(Chicago_shp)/1000000 #Division required to turn into square km
+Chicago_shp@data <- rename(Chicago_shp@data, Community.Name = community)
+Chicago_shp@data <- rename(Chicago_shp@data, Area.Number = area_numbe)
+
+```
+
+### Calculate community crime density (count/km^2) for violent crimes and property crimes.
+```{r CalculateDensity, message=FALSE, warning=FALSE}
+#Subset the data to just Violent Crime and Non-Violent Property Crime
+crime_subset_df <- subset(crime_df_no_NAs,Meta.Category %in% c("Violent Crimes","Non-Violent Property Crime"))
+
+#Create data frame by community
+crime_by_community <- crime_subset_df %>%
+  group_by(Meta.Category,Community.Name) %>%
+  summarise(Count = n())
+
+#Convert to uppercase to match shape file
+crime_by_community$Community.Name = toupper(crime_by_community$Community.Name)
+
+#Join shape area data to crime_by_community and create density variable. We later do this join in the opposite direction to show how to do the same thing but for mapping purposes.  Only the second method would actually be required as you can access shape file data using the @ symbol.
+crime_by_community <- left_join(crime_by_community,Chicago_shp@data, by = "Community.Name")
+crime_by_community <- as.data.frame(crime_by_community)
+crime_by_community <- select(crime_by_community, Meta.Category, Community.Name, Count, Poly_Area)
+crime_by_community <- mutate(crime_by_community, Density = (Count / Poly_Area)/Num_Years_in_Data)  #Division is to annualize figure
+```
+
+### Plot community crime density (count/km^2) for violent crimes and property crimes.
+
+__Note:__ This comes after the Choropleth in the writeup
+
+As an addendum to the above map, the following bar graph shows the 20 communities with the highest density ratings.  It is ordered by a community’s overall crime density and then split out to show Non-Violent Property Crime separate from Violent Crimes.  
+```{r PlotDensity, figwidth = 30, fig.align='center', echo = TRUE}
+#Plot crime by community by density
+Comms_to_show <- c("LOOP","NEAR NORTH SIDE","SOUTH SHORE","WEST GARFIELD PARK",
+                   "WEST ENGLEWOOD","ENGLEWOOD","EAST GARFIELD PARK","NORTH LAWNDALE","CHATHAM","AUSTIN",
+                   "LAKE VIEW","ROGERS PARK","AUBURN GRESHAM","GRAND BOULEVARD","WASHINGTON PARK",
+                   "HUMBOLDT PARK","WOODLAWN","GREATER GRAND CROSSING","WEST TOWN","CHICAGO LAWN")
+
+g3 <- ggplot(data = subset(crime_by_community,Community.Name %in% Comms_to_show),aes(reorder(Community.Name, Density), y = Density, fill = Density)) +
+  scale_y_continuous(labels=comma) + 
+  scale_fill_gradient(low = "lightblue", high = "red", guide = "colourbar") +
+  geom_bar(stat = "identity", alpha=0.75)+
+  coord_flip() +
+  facet_wrap(~Meta.Category) +
+  labs(title = paste('Top 20 Annualized Community Crime Rates by km^2'), x = "Community", y = "Occurrences") +   theme_light()
+
+#pdf('Images/g3.pdf')
+g3
+#dev.off()
+``` 
+
+Note: Some communities (like the Loop and the Near North Side) are very dense but markedly one-sided in the make-up of their crime.  Both of these communities are relatively affluent with per capita incomes of $65,526 and $88,669, respectively.  Demographic based analysis might see their crime rates as anomalous; however, they have a very large number of accessible mass transit locations within their communities. As we will see later, this at least partially explains their very high crime rates.
+
+Community | Per Capita Income	| Number of Closely Accessible Transit Stops
+--------- | ----------------- | ------------------------------------------
+Loop | $65,526 | 10
+Near North Side | $88,669 | 10
+Median | $20,956 | 4
+
+### Limit the data to max community boundaries:
+```{r MaxBoundaries}
+summary(Chicago_shp)
+bbox(Chicago_shp)
+
+#Limit the data to max community boundaries
+crime_df_no_NAs <- subset(crime_df_no_NAs, 
+                         -87.94011 <= Longitude.Crime & Longitude.Crime <= -87.52414 &
+                          41.64454 <= Latitude.Crime & Latitude.Crime <= 42.02304)
+
+#Subset the data again for standard deviation ellipse shapes below.
+violent_crime_subset <- subset(crime_df_no_NAs,Meta.Category %in% c("Violent Crimes"))
+prop_crime_subset <- subset(crime_df_no_NAs,Meta.Category %in% c("Non-Violent Property Crime"))
+```
+
+### Convert to spatial points dataframe and pull in police and transit station coordinates.
+```{r SpatialPointsDataFrame}
+library(sp)
+
+# Convert to SpatialPointsDataFrame with longitude and latitude
+
+#Crime data - all
+coords <- SpatialPoints(crime_subset_df[, c("Longitude.Crime","Latitude.Crime")])
+crime_spatial_df <- SpatialPointsDataFrame(coords, crime_subset_df)
+proj4string(crime_spatial_df) <- CRS("+proj=longlat +ellps=WGS84")
+
+#Crime data - for violent crime ellipse below
+violent_coords <- SpatialPoints(violent_crime_subset[, c("Longitude.Crime","Latitude.Crime")])
+violent_crime_spatial_df <- SpatialPointsDataFrame(violent_coords, violent_crime_subset)
+proj4string(violent_crime_spatial_df) <- CRS("+proj=longlat +ellps=WGS84")
+
+#Crime data - for property crime ellipse below
+prop_coords <- SpatialPoints(prop_crime_subset[, c("Longitude.Crime","Latitude.Crime")])
+prop_crime_spatial_df <- SpatialPointsDataFrame(prop_coords, prop_crime_subset)
+proj4string(prop_crime_spatial_df) <- CRS("+proj=longlat +ellps=WGS84")
+
+#Pull in Mass Transit and Police Department Locations
+Mass_Transit <- read.csv("Data/CTAListofLStopsWithPDDistance.csv", sep = ",", header = TRUE)
+Mass_Transit <- Mass_Transit[,c(1,2,3,4,5,6,7,9,12)]
+#Transit_Coord <- Mass_Transit
+
+Police_Dps <- read.csv("Data/PoliceStations.csv", sep = ",", header = TRUE)
+Police_Dps <- Police_Dps[,c(1,6,7)]
+
+```
+
+### Calculate mean locations and standard deviations for confidence interval ellipses
+```{r CalculateEllipseShapeFile, message = FALSE, warning = FALSE}
+
+#Create Ellipse Data frame
+df_ellipse <- data.frame(prop_crime_spatial_df@coords, group="Non-Violent Property Crime")
+df_ellipse <- rbind(df_ellipse, data.frame(violent_crime_spatial_df@coords, group="Violent Crimes"))
+
+#Create points for Ellipses
+library(ellipse)
+df_ell <- data.frame()
+
+for(g in levels(df_ellipse$group)){
+df_ell <- rbind(df_ell, cbind(as.data.frame(with(df_ellipse[df_ellipse$group==g,], ellipse(cor(Longitude.Crime, Latitude.Crime), 
+                                         scale=c(sd(Longitude.Crime),sd(Latitude.Crime)), 
+                                         centre=c(mean(Longitude.Crime),mean(Latitude.Crime)),level = 0.68))),group=g))
+}
+```
+
+### Foritfy spatial data
+ggplot2 works with data frames and not objects of class **Spatial***. So we have to convert the shapes file for those in particular using the `fortify()` function from ggplot2.
+```{r fortify, message = FALSE, warning = FALSE}
+Chicago_shp_df <- fortify(Chicago_shp)
+```
+ 
+
+### Plot crime by category along with 68% confidence ellipse
+Create background layer 
+__Note:__ The ideal zoom setting would be 10.5, but that is not possible.
+```{r BackgroundLayer, echo = TRUE, message = FALSE, warning = FALSE}
+## Use "get_map" command to download the images and format them for plotting
+map_dat <- get_googlemap(center = c(lon = -87.723900, lat = 41.839530), zoom = 10,
+  maptype = "road", language = "en-EN", sensor = FALSE, messaging = FALSE,
+  urlonly = FALSE)
+```
+ 
+Use "ggmap" command to make the background plot
+```{r BackgroundPlot, message = FALSE, warning = FALSE}
+ChicagoMap <- ggmap(map_dat, extent = "device", legend = "topleft")
+ChicagoMap
+```
+ 
+Draw 68% confidence interval on maps for both Violent and Property Crimes.
+```{r Ellipses, figwidth = 30, fig.align='center', message = FALSE, warning = FALSE}
+CMap_ellipse_all <- ChicagoMap + 
+  geom_point(data = df_ellipse,aes(x = Longitude.Crime, y = Latitude.Crime, colour = group),alpha = .007) +
+  geom_path(data=df_ell, aes(x=x, y=y), size=1, col = "white", linetype=2)+
+  facet_wrap(~group)+
+  theme(panel.margin = unit(1, "lines"))
+
+#pdf('Images/ellipses.pdf')
+CMap_ellipse_all +guides(colour=FALSE)
+#dev.off()
+```
+
+Zoom Map in a little for heatmaps.
+```{r Resize, message = FALSE, warning = FALSE}
+map_dat <- get_googlemap(center = c(lon = -87.723900, lat = 41.839530), zoom = 11,
+  maptype = "road", language = "en-EN", sensor = FALSE, messaging = FALSE,
+  urlonly = FALSE)
+
+ChicagoMap <- ggmap(map_dat, extent = "device", legend = "topleft")
+
+#Add Shapefile
+ChicagoMap2 <- ChicagoMap + 
+  geom_polygon(aes(x = long, y = lat, group = group), data = Chicago_shp_df, colour = "black", fill = NA, size = .2)
+
+```
+
+
+## Heatmaps - Overall View of Chicago
+
+### Create base heatmap for Violent Crimes and Property Crimes.
+```{r CreateHeatmaps}
+ChicagoHeatMap <- ChicagoMap2 +
+  stat_density2d(aes(x = Longitude.Crime, 
+                         y = Latitude.Crime, 
+                         fill = ..level.., 
+                         alpha = ..level..),
+                     na.rm = TRUE,
+                     size = .05,
+                     bins = 12,
+                     data = crime_subset_df, 
+                     geom = "polygon",
+                     colour = "grey") +
+      
+      ## Configure the scale and panel
+      scale_fill_continuous(low = "red", high = "darkred", guide = "colourbar") +
+      scale_alpha(range = c(.1,.6)) +
+      
+      ## Title and labels    
+      labs(x = "Longitude", y = "Latitude") +
+      ggtitle(paste("Crimes in/around Chicago")) +
+      
+      ## Other theme settings
+      theme(
+        plot.title = element_text(size = 26, face = 'bold', vjust = 2),
+        axis.text = element_blank(),
+        axis.title = element_blank(),
+        axis.ticks = element_blank(),
+        legend.position = "none",
+        strip.background = element_rect(fill = 'grey80'),
+        strip.text = element_text(size = 18)
+      )
+```
+
+### Plot Heatmaps
+
+#### Base Map
+The following is an overall image of Non-violent Property Crime and Violent Crimes around Chicago.  Property crime is highly focused downtown with a few moderate hot spots elsewhere.  On the other hand, violent crime is widely dispersed with multiple hot zones.
+```{r BaseHeatmap, figwidth = 30, fig.align='center'}
+#pdf('Images/heatmaps.pdf')
+ChicagoHeatMap +
+  facet_wrap(~Meta.Category)+
+  theme(panel.margin = unit(1, "lines"))+
+  guides(colour=FALSE)
+#dev.off()
+```
+
+#### Add Police Stations 
+First, create circle function for radius drawings
+```{r Add_1.75km_circles_function}
+
+# create circles data frame from the PD data frame
+make_circles <- function(pointlist, radius, nPoints = 100){
+    # radius: radius is measured in kilometer
+    meanLat <- mean(pointlist$Latitude)
+    # length per longitude changes with Latitude, so need correction. 
+    # Also, note that 1 degree of latitude is the same as 111 kilometers.
+    radiusLon <- radius /111 / cos(meanLat/57.3) 
+    radiusLat <- radius / 111
+    circleDF <- data.frame(ID = rep(pointlist[,c(1)], each = nPoints))
+    angle <- seq(0,2*pi,length.out = nPoints)
+
+    circleDF$lon <- unlist(lapply(pointlist$Longitude, function(x) x + radiusLon * cos(angle)))
+    circleDF$lat <- unlist(lapply(pointlist$Latitude, function(x) x + radiusLat * sin(angle)))
+    return(circleDF)
+}
+
+# Create data frame for circles around PDs
+PDCircles <- make_circles(Police_Dps, 2)
+```
+
+If our null hypothesis regarding proximity to police departments is correct, we should see dips in a localized heat map around police markers.  The following heat map shows police departments as markers with 2km radius zones drawn around them.  Close inspection reveals that PDs are typically not located at peaks.  However, they also don’t exhibit any strong reductive effects on crime rates in their immediate, surrounding areas.  This map isn’t detailed enough to reject the first piece of our null hypothesis, but it doesn’t look promising.
+
+__Note:__ We used a 2 km radius assuming that any proximity effects would be de minimis beyond that range (if there are any at all).
+
+Graph:
+```{r HeatmapPD, figwidth = 30, fig.align='center'}
+ChicagoHeatMapPD <- ChicagoHeatMap + 
+  geom_point(aes(x = Longitude, y = Latitude), data = Police_Dps, color="blue", size = 3, alpha = .5) +
+  geom_polygon(data = PDCircles, aes(lon, lat, group = ID), color = "blue", alpha = .1, fill = "blue")
+
+#pdf('Images/heatmapwithPD.pdf')
+ChicagoHeatMapPD #+
+#  facet_wrap(~Meta.Category)+
+#  theme(panel.margin = unit(1, "lines"))+
+#  guides(colour=FALSE)
+#dev.off()
+```
+
+#### Replace Police Stations with Transit Stations 
+A transit station overlay (as represented by the L) shows a great deal of overlap between common transportation avenues and crime rates.  Again, this is not enough to confirm the hypothetical relationship between transit proximity and spatial crime rates, but it does provide a promising initial picture.  
+
+__Note:__ Although we do not have the data to confirm it, we suspect that this relationship would only be reinforced by adding bus routes:
+
+```{r HeatmapTrans, figwidth = 30, fig.align='center', message = FALSE, warning = FALSE}
+ChicagoHeatMapTrans <- ChicagoHeatMap + 
+  geom_point(aes(x = Longitude, y = Latitude), data = Mass_Transit, color="darkgreen", size = 3, alpha = .5) 
+
+#pdf('Images/heatmapwithTrans.pdf')
+ChicagoHeatMapTrans #+
+#  facet_wrap(~Meta.Category)+
+#  theme(panel.margin = unit(1, "lines"))+
+#  guides(colour=FALSE)
+#dev.off()
+```
+
+## Crime by Community Choropleth
+
+### Create base data for Choropleth
+```{r CreateChloropleth, message = FALSE, warning = FALSE}
+#Add density to Chicago_shp file
+
+#Create data frame by community
+crime_by_community2 <- crime_subset_df %>%
+  group_by(Community.Name) %>%
+  summarise(Count = n(),
+            Num.Close.Transit = n_distinct(Transit.index),
+            Percent.of.Housing.Crowded = median(Percent.of.Housing.Crowded),
+            Percent.Households.Below.Poverty = median(Percent.Households.Below.Poverty),
+            Percent.Aged.16.Unemployed = median(Percent.Aged.16.Unemployed),
+            Percent.Aged.25.Without.Hish.School.Diploma = median(Percent.Aged.25.Without.Hish.School.Diploma),
+            Census.Population = median(Census.Population),
+            Hardship.Index = median(Hardship.Index),
+            Per.Capita.Income = median(Per.Capita.Income))
+
+#Convert to uppercase to match shape file
+crime_by_community2$Community.Name = toupper(crime_by_community2$Community.Name)
+
+#Join shape area data to crime_by_community and create density variable
+Chicago_shp@data <- left_join(Chicago_shp@data, crime_by_community2, by = "Community.Name")
+Chicago_shp@data <- mutate(Chicago_shp@data, Density = (round((Count / Poly_Area), 2))/Num_Years_in_Data)
+Chicago_shp@data <- mutate(Chicago_shp@data, People.Per.km = (round((Census.Population / Poly_Area), 2)))
+
+#Create slimmer version for choropleth:
+choro <- Chicago_shp[,c("Area.Number","Community.Name","Density","Num.Close.Transit","People.Per.km","Percent.Households.Below.Poverty","Percent.Aged.16.Unemployed")]
+```
+
+### Plot Choropleth
+So far, we have demonstrated that crime rate (density) increases as one moves closer to both police stations and transit locations, but given the structure and political influence of community organizations, it may prove equally useful to view the problem and any resource deployment recommendations bounded by community borders.   The following choropleth displays Chicago communities according to increasing crime “density” as measured by annualized crime rate per square kilometer. 
+
+__Note:__ This is an image of the interactive html file available via the project’s Github folder.
+```{r PlotChoropleth}
+#Commented out here as it creates a separate html
+
+#library(plotGoogleMaps)
+#plotGoogleMaps(choro,zcol="Density",filename="Crimes_Communities.html",layerName="Density of Crimes", fillOpacity=0.4,strokeWeight=0,mapTypeId="ROADMAP")
+```
+
+## Demographics and Other Community Level Characteristics
+
+We chose a number of community level demographics to explore for our final regression models.  To summarize, we found that only 4 of the chosen factors were significantly correlated to a community’s crime rate (density). See the table and graphical correlation matrix below: 
+
+__Note:__ We will use the number of transit stations accessible to a given community as a proxy for individual crimes’ proximity figures in our regression models.  Also, note the co-linearity between “% Households Below the Poverty Line” vs. “% Aged 16 Unemployed” (corr = 0.81) and “#of Transit Stations vs. “Population Density” (corr = 0.48). This will dictate choosing one of each pair.
+
+__Note:__ The density correlation table can be found in the image folder in the Github project.
+
+### Plot Density vs. Various Community Characteristics
+```{r CorrelationGraphs, message = FALSE, warning = FALSE, echo = FALSE, figwidth = 30, fig.align='center'}
+#Number of Transit Stations
+g4 <- ggplot(data = Chicago_shp@data,aes(y = Density, x = Num.Close.Transit, color = Density)) +
+  geom_point(shape = 19, size = 4) +
+  scale_color_gradient(low = "lightblue", high = "red") +
+  scale_y_continuous(labels=comma) + 
+  geom_smooth(method = "lm") +
+  labs(title = paste('Crime Density vs. the Number of Closely Accessible Transit Stations'),x = "Number of Transit Stations Closely Accessible", y = "Crime Density per Km^2") + 
+  guides(color=FALSE) +
+  theme_light()
+
+#pdf('Images/g4.pdf')
+#g4
+#dev.off()
+
+cor.test(Chicago_shp@data$Density,Chicago_shp@data$Num.Close.Transit)
+
+#Hardship Index after removing outliers
+g5 <- ggplot(data = subset(Chicago_shp@data,!(Community.Name %in% c("NEAR NORTH SIDE", "LOOP"))),aes(y = Density, x = Hardship.Index, color = Density)) +
+  geom_point(shape = 19, size = 4) +
+  scale_color_gradient(low = "lightblue", high = "red") +
+  scale_y_continuous(labels=comma) + 
+  geom_smooth(method = "lm") +
+  labs(title = paste('Crime Density vs the Hardship Index'),x = "Hardship Index", y = "Crime Density per Square km") + 
+  guides(color=FALSE) +
+  theme_light()
+
+#pdf('Images/g5.pdf')
+#g5
+#dev.off()
+
+cor.test(Chicago_shp@data$Density,Chicago_shp@data$Hardship.Index)
+
+#Income after removing outliers.
+g6 <- ggplot(data = subset(Chicago_shp@data,!(Community.Name %in% c("NEAR NORTH SIDE","LOOP","LINCOLN PARK","LAKE VIEW"))), aes(y = Density, x = Per.Capita.Income, color = Density)) +
+  geom_point(shape = 19, size = 4) +
+  scale_color_gradient(low = "lightblue", high = "red") +
+  scale_y_continuous(labels=comma) + 
+  scale_x_continuous(labels=comma) + 
+  geom_smooth(method = "lm") +
+  labs(title = paste('Crime Density vs Per Capita Income'),x = "Per Capita Income", y = "Crime Density per Km^2") + 
+  guides(color=FALSE) +
+  theme_light()
+
+#pdf('Images/g6.pdf')
+#g6
+#dev.off()
+
+cor.test(Chicago_shp@data$Density,Chicago_shp@data$Per.Capita.Income)
+
+# Percent of Crowded Housing
+g7 <- ggplot(data = Chicago_shp@data, aes(y = Density, x = Percent.of.Housing.Crowded, color = Density)) +
+  geom_point(shape = 19, size = 4) +
+  scale_color_gradient(low = "lightblue", high = "red") +
+  scale_y_continuous(labels=comma) + 
+  scale_x_continuous(labels=comma) + 
+  geom_smooth(method = "lm") +
+  labs(title = paste('Crime Density vs % Crowded Housing'),x = "% Crowded Housing", y = "Crime Density per Km^2") + 
+  guides(color=FALSE) +
+  theme_light()
+
+#pdf('Images/g6.pdf')
+#g7
+#dev.off()
+
+cor.test(Chicago_shp@data$Density,Chicago_shp@data$Percent.of.Housing.Crowded)
+
+# Percent of Households Below Poverty
+g8 <- ggplot(data = Chicago_shp@data, aes(y = Density, x = Percent.Households.Below.Poverty, color = Density)) +
+  geom_point(shape = 19, size = 4) +
+  scale_color_gradient(low = "lightblue", high = "red") +
+  scale_y_continuous(labels=comma) + 
+  scale_x_continuous(labels=comma) + 
+  geom_smooth(method = "lm") +
+  labs(title = paste('Crime Density vs % Household Poverty'),x = "% Household Poverty", y = "Crime Density per Km^2") + 
+  guides(color=FALSE) +
+  theme_light()
+
+#pdf('Images/g6.pdf')
+#g8
+#dev.off()
+
+cor.test(Chicago_shp@data$Density,Chicago_shp@data$Percent.Households.Below.Poverty)
+
+# Percent of Youth Unemployed
+g9 <- ggplot(data = Chicago_shp@data, aes(y = Density, x = Percent.Aged.16.Unemployed, color = Density)) +
+  geom_point(shape = 19, size = 4) +
+  scale_color_gradient(low = "lightblue", high = "red") +
+  scale_y_continuous(labels=comma) + 
+  scale_x_continuous(labels=comma) + 
+  geom_smooth(method = "lm") +
+  labs(title = paste('Crime Density vs % Unemployed 16 year olds'),x = "% Aged 16 Unemployed", y = "Crime Density per Km^2") + 
+  guides(color=FALSE) +
+  theme_light()
+
+#pdf('Images/g6.pdf')
+#g9
+#dev.off()
+
+cor.test(Chicago_shp@data$Density,Chicago_shp@data$Percent.Aged.16.Unemployed)
+
+
+# Percent of Without HS Diploma
+g10 <- ggplot(data = Chicago_shp@data, aes(y = Density, x = Percent.Aged.25.Without.Hish.School.Diploma, color = Density)) +
+  geom_point(shape = 19, size = 4) +
+  scale_color_gradient(low = "lightblue", high = "red") +
+  scale_y_continuous(labels=comma) + 
+  scale_x_continuous(labels=comma) + 
+  geom_smooth(method = "lm") +
+  labs(title = paste('Crime Density vs % Without HS Diploma by Age 25'),x = "% Without HS Diploma", y = "Crime Density per Km^2") + 
+  guides(color=FALSE) +
+  theme_light()
+
+#pdf('Images/g6.pdf')
+#g10
+#dev.off()
+
+cor.test(Chicago_shp@data$Density,Chicago_shp@data$Percent.Aged.25.Without.Hish.School.Diploma)
+
+# Population Density
+g11 <- ggplot(data = Chicago_shp@data, aes(y = Density, x = People.Per.km, color = Density)) +
+  geom_point(shape = 19, size = 4) +
+  scale_color_gradient(low = "lightblue", high = "red") +
+  scale_y_continuous(labels=comma) + 
+  scale_x_continuous(labels=comma) + 
+  geom_smooth(method = "lm") +
+  labs(title = paste('Crime Density vs Population Density'),x = "People per Km^2", y = "Crime Density per Km^2") + 
+  guides(color=FALSE) +
+  theme_light()
+
+#pdf('Images/g6.pdf')
+#g11
+#dev.off()
+
+cor.test(Chicago_shp@data$Density,Chicago_shp@data$People.Per.km)
+
+#Print graphs in order of decreasing correlation
+library(gridExtra)
+
+#pdf('Images/correlationsgraphs1.pdf')
+grid.arrange(g4,g11,g8,g9)
+#dev.off()
+#pdf('Images/correlationsgraphs2.pdf')
+grid.arrange(g6,g5,g10,g7)
+#dev.off()
+
+#Createte Correlation Plots
+library("PerformanceAnalytics")
+library("GGally")
+library("corrplot")
+
+cor.mat <- round(cor(Chicago_shp@data[,c(20,19,15,14,21,12)],use = "pairwise.complete.obs"),2)
+
+#pdf('Images/DemographicsPairwiseCorr.pdf')
+corrplot(cor.mat, type="full", order="original", tl.col="black", tl.srt=45, p.mat = NULL , insig = "p-value", sig.level = 0.05)
+#dev.off()
+
+#pdf('Images/correlationsgraphs2.pdf')
+chart.Correlation(Chicago_shp@data[,c(12,21,14,15,19,20)])
+#dev.off()
+
+#ggpairs(Chicago_shp@data[,c(12,21,14,15,19,20)],columnLabels = c("# Close Transit","Population","% Below Poverty","Unemployed Youth","Per Capita Income","Crime Density" ),colour = "lightblue") +
+  theme_light()
+
+#ggcorr(Chicago_shp@data[,c(12,21,14,15,19,20)], label_round = 2, palette = "RdBu", label = TRUE, layout.exp = 0)
+```
+
+
+## Linear Models
+Given each of the above factors, we chose to model the linear relationships between a given communities overall crime count and crime density in separate linear models against those factors from the above analysis that seem most significant taking co-linearity into account.  These are Hour Category, the # of Transit Stations in Close Proximity to a Given Community, % Households Below the Poverty Level, and Minimum Distance to a transit Station (as a proxy for access to any public transportation).  
+
+### Model Against Crime Counts
+A model based on these few factors can explain nearly 50% of the monthly variance in community crime counts.
+Note: Minimum Distance is not a significant factor in this model.
+```{r LinearModel1, message = FALSE, warning = FALSE, echo = FALSE}
+#Create data frame by community
+crime_by_community3 <- crime_subset_df %>%
+  group_by(Community.Name, Year, Hour.Category) %>%
+  summarise(Count = n(),
+            Median.PD.Dist = median(PD.Dist.km),
+            Median.Transit.Dist = median(Transit.Dist.km),
+            Minimum.Transit.Dist = min(Transit.Dist.km))
+
+#Convert to uppercase to match shape file
+crime_by_community3$Community.Name = toupper(crime_by_community3$Community.Name)
+
+Chicago_shp_for_lm <- Chicago_shp@data[ , c("Community.Name","Num.Close.Transit","Poly_Area","People.Per.km","Percent.Households.Below.Poverty","Percent.Aged.16.Unemployed","Per.Capita.Income")]
+
+#Join shape area data to crime_by_community to grab distinct counts of transit by community.
+crime_by_community3 <- left_join(crime_by_community3,Chicago_shp_for_lm, by = "Community.Name")
+
+model.count <- lm(Count ~ Hour.Category + Num.Close.Transit + Percent.Households.Below.Poverty + Minimum.Transit.Dist, data = crime_by_community3)
+
+summary(model.count)
+```
+I.e. within a given year and hour category, the above variables can explain 41% of the crime count variance by community.
+
+### Model Against Crime Density
+Another model based on the same factors can explain 51% of the annual variance in community crime density.
+```{r LinearModel2, message = FALSE, warning = FALSE, echo = FALSE}
+#Model by annualized Crime Density
+crime_by_community4 <- crime_subset_df %>%
+  group_by(Community.Name, Year, Hour.Category) %>%
+  summarise(Count = n(),
+            Median.PD.Dist = median(PD.Dist.km),
+            Minimum.Transit.Dist = min(Transit.Dist.km),
+            Median.Transit.Dist = median(Transit.Dist.km))
+
+#Convert to uppercase to match shape file
+crime_by_community4$Community.Name = toupper(crime_by_community4$Community.Name)
+
+#Join shape area data to crime_by_community to grab distinct counts of transit by community.
+crime_by_community4 <- left_join(crime_by_community4,Chicago_shp_for_lm, by = "Community.Name")
+crime_by_community4 <- mutate(crime_by_community4, Density = Count/Poly_Area)
+
+model.density <- lm(Density ~ Hour.Category + Num.Close.Transit + Percent.Households.Below.Poverty + Minimum.Transit.Dist, data = crime_by_community4)
+
+summary(model.density)
+```
+
+### Extra Credit
+#### Relationships Between Localized Transit Station Crime rates and PD distance
+I did the following test to see if transit stations closer to PD's had lower crime rates.  They do not.
+```{r Transit_Dist_from_PD, message = FALSE, warning = FALSE}
+#Create data frame by Station Name
+Mass_Transit_Closest_PD <- subset(Mass_Transit,PD.Dist.km < 2) %>%
+  group_by(STATION_NAME, Transit.index, STOP_NAME) %>%
+  summarise(Closest.PD.Dist = median(PD.Dist.km))
+
+Mass_Transit_Closest_PD <- rename(Mass_Transit_Closest_PD, Station.Name = STATION_NAME)
+            
+km_to_Transit_Crimes <- subset(crime_subset_df, Transit.Dist.km < 2) %>%
+  group_by(Transit.index) %>%
+  summarise(Count = n())
+
+#Join Station Proximity Data 
+Mass_Transit_Closest_PD <- left_join(Mass_Transit_Closest_PD, km_to_Transit_Crimes, by = "Transit.index")
+Mass_Transit_Closest_PD$Station.Name <- as.factor(Mass_Transit_Closest_PD$Station.Name)
+
+# Transit Proximity to PD Effects on Crime less Loop outliers.
+g12 <- ggplot(data = Mass_Transit_Closest_PD, aes(y = Count, x = Closest.PD.Dist, color = Count)) +
+  geom_point(shape = 19, size = 4) +
+  scale_color_gradient(low = "lightblue", high = "red") +
+  scale_y_continuous(labels=comma) + 
+  scale_x_continuous(labels=comma) + 
+  geom_smooth(method = "lm") +
+  labs(title = paste('Crime frequency in 1.75 km Radius Around Transit Station vs Station Distance from Police Department'),x = "Distance to Closest PD", y = "Count of Crime") + 
+  theme_light()
+
+#pdf('Images/g6.pdf')
+g12
+#dev.off()
+
+cor.test(Mass_Transit_Closest_PD$Count,Mass_Transit_Closest_PD$Closest.PD.Dist)
+```
+
+## Conclusion
+### Infrastructure Proposal
+Based on this analysis, it would appear that crime density actually increases as one moves closer to both police departments and transit stations.  With regard to police departments, this bias may simply reflect that police are more likely to make an arrest for a crime where they most regularly patrol.  
+While it may not have the hypothesized benefit of reducing crime rates, placing police departments near transit stations will still give police the best chance to affect crime in their areas.   As such, the city may still be best served by building small, permanent outposts at its most affected transit stations as opposed to a single, large department.  This strategy could reduce costs while having a targeted effect on demonstrated hot spots.  Regular assignments to these posts could have the added benefit of improving community relations and participation through personal familiarity.  I would recommend running a few trials in the densest communities to determine effect.  Per the choropleth and bar graphs in the community section of this paper, I would recommend running separate trials in West and East Garfield for Violent Crimes vs. the Loop and the Near North Side for Property Crimes.  Trials should help to isolate divergent effects on Violent Crimes vs. Non-Violent Property Crime.
+
+#### Proposal for further analysis
+As has been reported in recent (spring of 2015) news, Chicago is [“off to (its) deadliest start in nearly two decades.”](http://www.chicagotribune.com/news/ct-chicago-homicides-first-quarter-met-20160330-story.html) Homicides and shootings are up by more than 70% year over year through the first quarter, while arrests and investigative stops have fallen (follow the link for the source).  The reasons for those shifts are beyond the scope of this analysis.  However, a time lapse analysis could shed some light on growth patterns. If the client wishes to move forward, I would suggest the following:  
+
+* Add additional transit station locations and volume estimates for each location. E.g. bus routes
+* Add Police Station employee data
+* Add additional community and/or demographic data
+* Perform temporal analysis showing acceleration/deceleration of crime rates per community to understand trends.
+
+### Temporal (Schedule) Conclusions
+Other than relatively weak, weekend effects, patrol schedules do not need to adjust for day of week volumes.  There are, however, strong shifts in hourly volume and staff should be scheduled accordingly.
+
+#### Proposal for further analysis
+As a follow up to this analysis, I would suggest the following:  
+
+* Perform an Erlang-C style analysis to determine workforce requirements on an hourly basis per police district.
+* Examine Holiday effects on crime.
+* Expand prediction models to include other variables that could assist with scheduling decisions such as weather.
+
