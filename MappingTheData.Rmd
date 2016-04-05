@@ -2,7 +2,7 @@
 title: "Analyzing Chicago Crime to Inform Resource Deployment"
 author: "Jonathan Morken"
 date: "March 19, 2016"
-output: html_document
+output: word_document
 ---
 
 #### Special Note for R Markdown File Only
@@ -21,7 +21,7 @@ The data from 2013-01-01 through 2014-12-31 actually indicated that crime rates 
 ******
 
 ## Introduction
-The “client” has requested analytic support to determine how to best invest in new police infrastructure. The purpose of this analysis is to determine significant spatial, temporal, and demographic crime patterns that could be used to guide investments and/or improve policing patterns.  We will examine Chicago Crime Data from several angles and utilize multiple visual methods including the following:
+The 'client' has requested analytic support to determine how to best invest in new police infrastructure. The purpose of this analysis is to determine significant spatial, temporal, and demographic crime patterns that could be used to guide investments and/or improve policing patterns.  We will examine Chicago Crime Data from several angles and utilize multiple visual methods including the following:
 
 * Histograms; Frequency of crime by type relative to
     + Police presence (proximity to PD’s)
@@ -61,11 +61,11 @@ While the crime data currently covers dates from 2013-01-01 to 2014-12-31, this 
 
 ### Sources
 Base crime data, shape files, coordinate files, and census data comes from the data repository at the [City of Chicago website](https://data.cityofchicago.org/).  Although not used in this iteration of analysis, weather data was downloaded from the [Weather Underground](https://www.wunderground.com/history/airport/KMDW/2016/3/5/CustomHistory.html?req_city=Chicago%20Midway&req_state=IL&reqdb.zip=60499&reqdb.magic=11&reqdb.wmo=99999).  This analysis also uses a community-census tract mapping table courtesy of [Rob Paral](http://robparal.blogspot.com/2012/04/census-tracts-in-chicago-community.html). 
-The base sources are then subsequently scrubbed, reformatted, joined, etc. in R.  This can be viewed via the RMarkdown file “CreateSuperDataSet.”
+The base sources are then subsequently scrubbed, reformatted, joined, etc. in R.  This can be viewed via the RMarkdown file 'CreateSuperDataSet.'
 
 ### General Data Structure Notes
-Each tuple in the base crime dataset equates to 1 crime.  While the base crime data is robust, this analysis required a decent amount of “munging,” mutating, cleansing, etc.  It does includes some null fields, duplications where a given crime may have had more than one victim, and some erroneous location data such as crimes occurring within a police station, outside of city limits, or within a different state, etc . Some of those characteristics, like duplications for more than one victim, are appropriate and left alone.  Missing/Erroneous spatial data is dropped.  You can see more detail and follow along via the appropriate file on Github.
-Most of the Demographic data is provided by the city of Chicago’s Department of Public Health as underlying pieces to their [“Hardship Index”](http://www.chicagomag.com/Chicago-Magazine/The-312/May-2012/The-Geography-of-Economic-Hardship-in-Chicago/).  It includes the following: 
+Each tuple in the base crime dataset equates to 1 crime.  While the base crime data is robust, this analysis required a decent amount of 'munging,' mutating, cleansing, etc.  It does includes some null fields, duplications where a given crime may have had more than one victim, and some erroneous location data such as crimes occurring within a police station, outside of city limits, or within a different state, etc . Some of those characteristics, like duplications for more than one victim, are appropriate and left alone.  Missing/Erroneous spatial data is dropped.  You can see more detail and follow along via the appropriate file on Github.
+Most of the Demographic data is provided by the city of Chicago’s Department of Public Health as underlying pieces to their ['Hardship Index'](http://www.chicagomag.com/Chicago-Magazine/The-312/May-2012/The-Geography-of-Economic-Hardship-in-Chicago/).  It includes the following: 
 
 * Percent of crowded housing
 * Percent of households below poverty
@@ -642,7 +642,7 @@ choro <- Chicago_shp[,c("Area.Number","Community.Name","Density","Num.Close.Tran
 ```
 
 ### Plot Choropleth
-So far, we have demonstrated that crime rate (density) increases as one moves closer to both police stations and transit locations, but given the structure and political influence of community organizations, it may prove equally useful to view the problem and any resource deployment recommendations bounded by community borders.   The following choropleth displays Chicago communities according to increasing crime “density” as measured by annualized crime rate per square kilometer. 
+So far, we have demonstrated that crime rate (density) increases as one moves closer to both police stations and transit locations, but given the structure and political influence of community organizations, it may prove equally useful to view the problem and any resource deployment recommendations bounded by community borders.   The following choropleth displays Chicago communities according to increasing crime 'density' as measured by annualized crime rate per square kilometer. 
 
 __Note:__ This is an image of the interactive html file available via the project’s Github folder.
 ```{r PlotChoropleth}
@@ -656,7 +656,7 @@ __Note:__ This is an image of the interactive html file available via the projec
 
 We chose a number of community level demographics to explore for our final regression models.  To summarize, we found that only 4 of the chosen factors were significantly correlated to a community’s crime rate (density). See the table and graphical correlation matrix below: 
 
-__Note:__ We will use the number of transit stations accessible to a given community as a proxy for individual crimes’ proximity figures in our regression models.  Also, note the co-linearity between “% Households Below the Poverty Line” vs. “% Aged 16 Unemployed” (corr = 0.81) and “#of Transit Stations vs. “Population Density” (corr = 0.48). This will dictate choosing one of each pair.
+__Note:__ We will use the number of transit stations accessible to a given community as a proxy for individual crimes’ proximity figures in our regression models.  Also, note the co-linearity between '% Households Below the Poverty Line' vs. '% Aged 16 Unemployed' (corr = 0.81) and '#of Transit Stations vs. 'Population Density' (corr = 0.48). This will dictate choosing one of each pair.
 
 __Note:__ The density correlation table can be found in the image folder in the Github project.
 
@@ -923,7 +923,7 @@ Based on this analysis, it would appear that crime density actually increases as
 While it may not have the hypothesized benefit of reducing crime rates, placing police departments near transit stations will still give police the best chance to affect crime in their areas.   As such, the city may still be best served by building small, permanent outposts at its most affected transit stations as opposed to a single, large department.  This strategy could reduce costs while having a targeted effect on demonstrated hot spots.  Regular assignments to these posts could have the added benefit of improving community relations and participation through personal familiarity.  I would recommend running a few trials in the densest communities to determine effect.  Per the choropleth and bar graphs in the community section of this paper, I would recommend running separate trials in West and East Garfield for Violent Crimes vs. the Loop and the Near North Side for Property Crimes.  Trials should help to isolate divergent effects on Violent Crimes vs. Non-Violent Property Crime.
 
 #### Proposal for further analysis
-As has been reported in recent (spring of 2015) news, Chicago is [“off to (its) deadliest start in nearly two decades.”](http://www.chicagotribune.com/news/ct-chicago-homicides-first-quarter-met-20160330-story.html) Homicides and shootings are up by more than 70% year over year through the first quarter, while arrests and investigative stops have fallen (follow the link for the source).  The reasons for those shifts are beyond the scope of this analysis.  However, a time lapse analysis could shed some light on growth patterns. If the client wishes to move forward, I would suggest the following:  
+As has been reported in recent (spring of 2015) news, Chicago is ['off to (its) deadliest start in nearly two decades.'](http://www.chicagotribune.com/news/ct-chicago-homicides-first-quarter-met-20160330-story.html) Homicides and shootings are up by more than 70% year over year through the first quarter, while arrests and investigative stops have fallen (follow the link for the source).  The reasons for those shifts are beyond the scope of this analysis.  However, a time lapse analysis could shed some light on growth patterns. If the client wishes to move forward, I would suggest the following:  
 
 * Add additional transit station locations and volume estimates for each location. E.g. bus routes
 * Add Police Station employee data
