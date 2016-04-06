@@ -649,9 +649,9 @@ __Note:__ This is an image of the interactive html file available via the projec
 #Commented out here as it creates a separate html
 
 #library(plotGoogleMaps)
-#plotGoogleMaps(choro,zcol="Density",filename="Crime_Density_by_Community.html",layerName="Density of Crimes", fillOpacity=0.5,strokeWeight=0,mapTypeId="ROADMAP")
+#plotGoogleMaps(choro,zcol="Density",filename="data/Crime_Density_by_Community.html",layerName="Density of Crimes", fillOpacity=0.5,strokeWeight=0,mapTypeId="ROADMAP")
 
-#plotGoogleMaps(choro,zcol="Hardship.Index",filename="Hardship_by_Community.html",layerName="Hardship by Community", fillOpacity=0.4,strokeWeight=0,mapTypeId="ROADMAP")
+#plotGoogleMaps(choro,zcol="Hardship.Index",filename="data/Hardship_by_Community.html",layerName="Hardship by Community", fillOpacity=0.4,strokeWeight=0,mapTypeId="ROADMAP")
 
 ```
 
