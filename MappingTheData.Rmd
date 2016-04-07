@@ -1,19 +1,19 @@
 ---
-title: "Analyzing Chicago Crime to Inform Resource Deployment"
+title: "Analyzing the Spatial and Demographic Characteristics of Chicago Crime to Inform Resource Deployment"
 author: "Jonathan Morken"
 date: "March 19, 2016"
 output: word_document
 ---
 
 #### Special Note for R Markdown File Only
-__Special Note:__ While this R Markdown files serves as the source for all of the materials found in this project's writeup, this file has a slightly different purpose and will not follow the paper's order. Essentially, I want users to be able to follow this file as if it were a tutorial.  As such, most of the code will be viewable, I will create more data frames than necessary so the user can inspect differences, and the order of creation will be different to similar visualizations together.  To see the intended narrative and order for story purposes, read the writeup.
+__Special Note:__ While this R Markdown files serves as the source for all of the materials found in this project's writeup, this file has a slightly different purpose and will only loosely follow the paper's order. Essentially, I want users to be able to follow this file as if it were a tutorial.  As such, most of the code will be viewable, I will create more data frames than necessary so the user can inspect differences, and the order of creation will be different to group similar visualizations together.  To see the intended narrative and order for story purposes, read the writeup.
 
 ## Abstract
 The purpose of this analysis was to examine the spatial characteristics of Chicago crime data and to explore relationships between the density of that crime, proximity to locations of interest (Police and Transit Stations), and community demographics in order to inform further investment in police infrastructure.  We also examined some of the temporal characteristics of crime to inform resource management/deployment.  Our initial hypothesis was as follows:  
 
 1. Crime rates (as measured by count/km^2^) decrease as one moves closer to a police department 
     + This assumes that proximity equates to higher police presence which acts as a deterrent.
-    + Alternatively, police may be more likely to make an arrest for a crime where they most regularly patrol, resulting in increased activity as one gets closer to a police station. This would cause us to reject this section of our hypothesis.
+    + Alternatively, police may be more likely to make an arrest for a crime where they most regularly patrol, resulting in increased frequency as one gets closer to a police station (a sort of selection bias). This would cause us to reject this section of our hypothesis.
 2. Crime rates increase as one moves closer to a transit station.
 
 The data from 2013-01-01 through 2014-12-31 actually indicated that crime rates do not decrease but actually increase as one moves closer to a police station, causing us to reject part 1 of the hypothesis.  However, crime rates do increase exponentially as one approaches a transit station, supporting section two of our initial hypothesis.  Our final recommendation as it concerns police infrastructure can be found in the conclusion.  
@@ -39,10 +39,10 @@ Our initial, spatial hypothesis:
 1. Crime rates (as measured by count/km^2^) decrease as one moves closer to a police department 
     + This assumes that proximity equates to higher police presence which acts as a deterrent.
          + Note: for the sake of simplicity we assume that each police department employs the same number of officers.  This could be tightened with actual weights if we wish to extend our engagement.
-    + Alternatively, police may be more likely to make an arrest for a crime where they most regularly patrol, resulting in increased activity as one gets closer to a police station. This would cause us to reject this section of our hypothesis.
+    + Alternatively, police may be more likely to make an arrest for a crime where they most regularly patrol, resulting in increased frequency as one gets closer to a police station. This would cause us to reject this section of our hypothesis.
 2. Crime rates increase as one moves closer to a transit station.
 
-Assuming both parts of the hypothesis prove true and the spatial relationships are strong, we will likely suggest building small, permanent outposts in the city's most crime dense communities, at their most affected transit stations.  Such a strategy could reduce crime rates and place our force in the most best position to affect crime in their communities.
+Assuming both parts of the hypothesis prove true and that the spatial relationships are strong, we will likely suggest building small, permanent outposts in the city's most crime dense communities, at their most affected transit stations.  Such a strategy could reduce crime rates and increase force efficiency.
   
 ## R Packages for Spatial Data Analysis
 Here are links to a few of the spatial and graphical packages used herein:
@@ -56,16 +56,16 @@ Here are links to a few of the spatial and graphical packages used herein:
 ## The Data
 
 ### Background
-The superset of data is a combined set of files including Chicago crime data, geo-spatial polygons, Mass transit station locations, police department locations, demographics, Categorization tables, weather data, and more.  All requisite data files can be found in the appropriate folder on Github. 
-While the crime data currently covers dates from 2013-01-01 to 2014-12-31, this could be easily updated at will.  Currently, I have intentionally left 2015 data out, as I am using it as test data for a separate analysis.
+The superset of data is a combined set of files including Chicago crime data, geo-spatial polygons, Mass transit station locations, police department locations, demographics, Categorization tables, and weather data.  All requisite data files can be found in the appropriate folder on [Github](https://github.com/JEMorken/Capstone-Project). 
+While the crime data currently covers dates from 2013-01-01 to 2014-12-31, this could be easily updated at will.  Currently, I have intentionally left 2015 data out, as I am using it as test data for separate analysis.
 
 ### Sources
-Base crime data, shape files, coordinate files, and census data comes from the data repository at the [City of Chicago website](https://data.cityofchicago.org/).  Although not used in this iteration of analysis, weather data was downloaded from the [Weather Underground](https://www.wunderground.com/history/airport/KMDW/2016/3/5/CustomHistory.html?req_city=Chicago%20Midway&req_state=IL&reqdb.zip=60499&reqdb.magic=11&reqdb.wmo=99999).  This analysis also uses a community-census tract mapping table courtesy of [Rob Paral](http://robparal.blogspot.com/2012/04/census-tracts-in-chicago-community.html). 
-The base sources are then subsequently scrubbed, reformatted, joined, etc. in R.  This can be viewed via the RMarkdown file 'CreateSuperDataSet.'
+Base crime data, shape files, coordinate files, and census data comes from the data repository at the [City of Chicago website](https://data.cityofchicago.org/).  Although not used in this iteration of analysis, weather data was downloaded from the [Weather Underground](https://www.wunderground.com/history/airport/KMDW/2016/3/5/CustomHistory.html?req_city=Chicago%20Midway&req_state=IL&reqdb.zip=60499&reqdb.magic=11&reqdb.wmo=99999) and is available in the drive.  This analysis also uses a community-census tract mapping table courtesy of [Rob Paral](http://robparal.blogspot.com/2012/04/census-tracts-in-chicago-community.html). 
+The base sources are then subsequently scrubbed, reformatted, joined, etc. in R.  Steps taken can be viewed in the RMarkdown files 'CreateSuperDataSet' and 'MappingtheData.'
 
 ### General Data Structure Notes
-Each tuple in the base crime dataset equates to 1 crime.  While the base crime data is robust, this analysis required a decent amount of 'munging,' mutating, cleansing, etc.  It does includes some null fields, duplications where a given crime may have had more than one victim, and some erroneous location data such as crimes occurring within a police station, outside of city limits, or within a different state, etc . Some of those characteristics, like duplications for more than one victim, are appropriate and left alone.  Missing/Erroneous spatial data is dropped.  You can see more detail and follow along via the appropriate file on Github.
-Most of the Demographic data is provided by the city of Chicago's Department of Public Health as underlying pieces to their ['Hardship Index'](http://www.chicagomag.com/Chicago-Magazine/The-312/May-2012/The-Geography-of-Economic-Hardship-in-Chicago/).  It includes the following: 
+Each tuple in the base crime dataset equates to 1 crime.  While the base crime data is robust, this analysis required a decent amount of 'munging,' mutating, cleansing, etc.  The crime data does include some null fields, duplications where a given crime may have had more than one victim, and some erroneous location data such as crimes occurring within a police station, outside of city limits, or within a different state, etc . Some of those characteristics, like duplications for more than one victim, are appropriate and left alone.  Missing/Erroneous spatial data is dropped.  You can see more detail and follow along via the files on [Github](https://github.com/JEMorken/Capstone-Project).
+Most of the Demographic data is provided by the city of Chicago's Department of Public Health as underlying pieces of their ['Hardship Index'](http://www.chicagomag.com/Chicago-Magazine/The-312/May-2012/The-Geography-of-Economic-Hardship-in-Chicago/).  It includes the following: 
 
 * Percent of crowded housing
 * Percent of households below poverty
@@ -99,7 +99,7 @@ In order to keep the files robust, but manageable, I have created categories for
     + Non-violent narcotic violations
     + Etc.
 
-__Note:__  The full map is viewable in Github.  This analysis displays all 4 types in initial plots but is trimmed to just Violent Crimes and Non-Violent Property Crime for all mapping exercises.
+__Note:__  The full map is viewable in [Github](https://github.com/JEMorken/Capstone-Project).  This analysis displays all 4 types in initial plots but is trimmed to just Violent Crimes and Non-Violent Property Crime for all mapping exercises.
 
 Hour Categories are split into 4 hour increments as follows:  
 
@@ -189,11 +189,11 @@ g1 <- ggplot(data = crime_df_no_NAs,aes(x = PD.Dist.km)) +
   labs(title = paste('Crime Proximity to Police Departments'),x = "Kilometers", y = "Occurrences") + 
   theme_light()
 
-#Code to extract figures behind plot for increasing crime density analysis. Note remove the facet wrap layer on the above for this first.
+#Code to extract figures behind plot for increasing crime density analysis. Note remove the facet wrap layer on the above before running the below.
 #head(ggplot_build(g1))
 ```
 
-Some of the increase in the first 1/4 kilometer may be due in part to incorrect location entries such as crimes occurring within police stations. However, the overall slope is meaningful.  While area shrinks 98% from a 2km radius to a ¼ km, density increases by 67%.  This would seem to support the alternative hypothesis that police presence does not have a dampening effect on crime, but that arrests actually increase with police patrols.
+Some of the increase in the first 1/4 kilometer may be due in part to incorrect location entries such as crimes occurring within police stations. However, the overall slope is meaningful.  While area shrinks 98% from a 2km radius to a 1/4 km, density increases by 67%.  Although other reasons could exist, this increasing density does support the alternative hypothesis that arrests increase the closer you get to a police station because police patrol those areas more often.  I.e. a sort of selection bias.
 
 ```{r, figwidth = 30, fig.align='center', echo = FALSE, message = FALSE, warning = FALSE}
 #Create pdf or simply show graph
@@ -203,7 +203,7 @@ g1
 ```
 
 ### Mass Transit Locations (as represented by the L)
-Here the initial hypothesis appears to be correct.  Crime rate (density) clearly increases as one moves closer to a given transit station. Again, while area decreases 98% from a 2km radius to just a ¼ km, density increases by 985%.  This effect starts to flatten out beyond 2 square kilometers. 
+For mass transit locations the initial hypothesis appears to be correct.  Crime rate (density) clearly increases as one moves closer to a given transit station. Again, while area decreases 98% from a 2km radius to just a ¼ km, density increases by 985%.  This effect starts to flatten out beyond 2 square kilometers. 
 
 __Note:__ The increasing crime density table and graph images can be found in the image folder in the Github project.
 
@@ -223,7 +223,7 @@ g2 <- ggplot(data = crime_df_no_NAs,aes(x = Transit.Dist.km)) +
 #head(ggplot_build(g2))
 ```
 
-This could be further refined with transit station volume, but that data is not currently available.  Regardless, it is clear that any future infrastructure investments must account for a city's transit characteristics.
+This could be further refined with more transit related data.  Regardless, it is clear that any future infrastructure investments must account for a city's transit characteristics.
 
 ```{r, figwidth = 30, fig.align='center', echo = FALSE, message = FALSE, warning = FALSE}
 #pdf('Images/g2.pdf')
@@ -236,7 +236,7 @@ g2
 
 __Note:__ This occurs later in the writeup.
 
-Before we get to regression models, it may also be useful to examine some of the temporal characteristics of Chicago crime.  First, it does not appear that crime substantially differs by day of week.  Here are graphs showing all 4 categories.  
+Before we get to regression models, it may also be useful to examine some of the temporal characteristics of Chicago crime.  First, it does not appear that crime substantially differs by day of week.  The following graphs show all 4 crime categories.  
 
 __Note:__ The lack of statistical significance was corroborated by linear models not shown here.
 ```{r, figwidth = 30, fig.align='center', echo = TRUE, message = FALSE, warning = FALSE}
@@ -259,7 +259,7 @@ d1
 #dev.off()
 ```
 
-The following boxplots display greater detail for the Violent Crimes and Non-Violent Property Crime categories.  It is interesting to note that property crimes fall on Saturday and Sunday while violent crimes rise.
+The following boxplots display greater detail for the Violent Crimes and Non-Violent Property Crime categories.  It is interesting to note that property crimes fall on Saturday and Sunday while violent crimes rise. If enforcement teams are organized by type of crime, it may still be worth factoring this into resource planning.
 ```{r, figwidth = 30, fig.align='center', echo = TRUE, message = FALSE, warning = FALSE}
 d2 <- ggplot(data = subset(crime_by_dayofweek,Meta.Category %in% c("Violent Crimes","Non-Violent Property Crime")),aes(x = DayofWeek, y = Count, colour = Meta.Category)) +
   scale_y_continuous(labels=comma) + 
@@ -575,7 +575,7 @@ make_circles <- function(pointlist, radius, nPoints = 100){
 PDCircles <- make_circles(Police_Dps, 2)
 ```
 
-If our null hypothesis regarding proximity to police departments is correct, we should see dips in a localized heat map around police markers.  The following heat map shows police departments as markers with 2km radius zones drawn around them.  Close inspection reveals that PDs are typically not located at peaks.  However, they also don't exhibit any strong reductive effects on crime rates in their immediate, surrounding areas.  This map isn't detailed enough to reject the first piece of our null hypothesis, but it doesn't look promising.
+If our hypothesis regarding proximity to police departments is correct, we should see dips in a localized heat map around police markers.  The following heat map shows police departments as markers with 2km radius zones drawn around them.  Close inspection reveals that PDs are typically not located at peaks.  However, they also don't appear to exhibit any strong reductive effects on crime rates in immediate, surrounding areas.  This map isn't detailed enough to reject the first piece of our hypothesis, but it isn't promising.
 
 __Note:__ We used a 2 km radius assuming that any proximity effects would be de minimis beyond that range (if there are any at all).
 
@@ -594,7 +594,7 @@ ChicagoHeatMapPD #+
 ```
 
 #### Replace Police Stations with Transit Stations 
-A transit station overlay (as represented by the L) shows a great deal of overlap between common transportation avenues and crime rates.  Again, this is not enough to confirm the hypothetical relationship between transit proximity and spatial crime rates, but it does provide a promising initial picture.  
+On the other hand, a transit station overlay (as represented by the L) shows a great deal of overlap between common transportation avenues and crime rates.  Again, this is not enough to confirm the hypothetical relationship between transit proximity and spatial crime rates, but it does provide a promising initial picture.  
 
 __Note:__ Although we do not have the data to confirm it, we suspect that this relationship would only be reinforced by adding bus routes:
 
@@ -642,7 +642,7 @@ choro <- Chicago_shp[,c("Area.Number","Community.Name","Density","Num.Close.Tran
 ```
 
 ### Plot Choropleth
-So far, we have demonstrated that crime rate (density) increases as one moves closer to both police stations and transit locations, but given the structure and political influence of community organizations, it may prove equally useful to view the problem and any resource deployment recommendations bounded by community borders.   The following choropleth displays Chicago communities according to increasing crime 'density' as measured by annualized crime rate per square kilometer. 
+So far, we have demonstrated that crime rate (density) increases as one moves closer to both police stations and transit locations, but given the structure and political influence of community organizations, it may prove equally useful to view the problem and any resource deployment recommendations bounded by community borders.   The following choropleth displays Chicago communities according to increasing crime rate as measured by annualized crime rate per square kilometer. 
 
 __Note:__ This is an image of the interactive html file available via the project's Github folder.
 ```{r PlotChoropleth}
@@ -654,12 +654,13 @@ __Note:__ This is an image of the interactive html file available via the projec
 #plotGoogleMaps(choro,zcol="Hardship.Index",filename="data/Hardship_by_Community.html",layerName="Hardship by Community", fillOpacity=0.4,strokeWeight=0,mapTypeId="ROADMAP")
 
 ```
+Using another metric, compare crime density as represented in the preceding map to the same map colored by community hardship. [See the section on data for information regarding the hardship index.]  Note how hardship is not a tremendous predictor of crime.  We will go on to examine this and other demographic factors in the next section. 
 
 ## Demographics and Other Community Level Characteristics
 
 We chose a number of community level demographics to explore for our final regression models.  To summarize, we found that only 4 of the chosen factors were significantly correlated to a community's crime rate (density). See the table and graphical correlation matrix below: 
 
-__Note:__ We will use the number of transit stations accessible to a given community as a proxy for individual crimes' proximity figures in our regression models.  Also, note the co-linearity between '% Households Below the Poverty Line' vs. '% Aged 16 Unemployed' (corr = 0.81) and '#of Transit Stations vs. 'Population Density' (corr = 0.48). This will dictate choosing one of each pair.
+__Note:__ We will use the number of transit stations accessible to a given community as a proxy for individual crime proximity in our regression models.  Also, note the co-linearity between '% Households Below the Poverty Line' vs. '% Aged 16 Unemployed' (corr = 0.81) and '#of Transit Stations vs. 'Population Density' (corr = 0.48). This will dictate choosing one of each pair.
 
 __Note:__ The density correlation table can be found in the image folder in the Github project.
 
@@ -836,7 +837,7 @@ chart.Correlation(Chicago_shp@data[,c(12,21,14,15,19,20)])
 Given each of the above factors, we chose to model the linear relationships between a given communities overall crime count and crime density in separate linear models against those factors from the above analysis that seem most significant taking co-linearity into account.  These are Hour Category, the # of Transit Stations in Close Proximity to a Given Community, % Households Below the Poverty Level, and Minimum Distance to a transit Station (as a proxy for access to any public transportation).  
 
 ### Model Against Crime Counts
-A model based on these few factors can explain nearly 50% of the monthly variance in community crime counts.
+A model based on these few factors explains 41% of the variance in community crime counts.
 Note: Minimum Distance is not a significant factor in this model.
 ```{r LinearModel1, message = FALSE, warning = FALSE, echo = FALSE}
 #Create data frame by community
@@ -922,8 +923,9 @@ cor.test(Mass_Transit_Closest_PD$Count,Mass_Transit_Closest_PD$Closest.PD.Dist)
 
 ## Conclusion
 ### Infrastructure Proposal
-Based on this analysis, it would appear that crime density actually increases as one moves closer to both police departments and transit stations.  With regard to police departments, this bias may simply reflect that police are more likely to make an arrest for a crime where they most regularly patrol.  
-While it may not have the hypothesized benefit of reducing crime rates, placing police departments near transit stations will still give police the best chance to affect crime in their areas.   As such, the city may still be best served by building small, permanent outposts at its most affected transit stations as opposed to a single, large department.  This strategy could reduce costs while having a targeted effect on demonstrated hot spots.  Regular assignments to these posts could have the added benefit of improving community relations and participation through personal familiarity.  I would recommend running a few trials in the densest communities to determine effect.  Per the choropleth and bar graphs in the community section of this paper, I would recommend running separate trials in West and East Garfield for Violent Crimes vs. the Loop and the Near North Side for Property Crimes.  Trials should help to isolate divergent effects on Violent Crimes vs. Non-Violent Property Crime.
+Based on this analysis, it would appear that crime density actually increases as one moves closer to both police departments and transit stations.    
+While it may not have the hypothesized benefit of reducing crime rates, placing police departments near transit stations will still give police the best chance to affect crime in their areas.   As such, the city may still be best served by building small, permanent outposts at its most affected transit stations as opposed to a single, large department.  This strategy could reduce costs while having a targeted effect on demonstrated hot spots.  Regular assignments to these posts could have the added benefit of improving community relations through personal familiarity.  I would recommend running a few trials in the densest communities to determine effect.  Per the choropleth and bar graphs in the community section of this paper, I would recommend running separate trials in West and East Garfield for Violent Crimes vs. the Loop and the Near North Side for Property Crimes.  Trials should help to isolate effects on Violent Crimes vs. Non-Violent Property Crime.
+
 
 #### Proposal for further analysis
 As has been reported in recent (spring of 2015) news, Chicago is ['off to (its) deadliest start in nearly two decades.'](http://www.chicagotribune.com/news/ct-chicago-homicides-first-quarter-met-20160330-story.html) Homicides and shootings are up by more than 70% year over year through the first quarter, while arrests and investigative stops have fallen (follow the link for the source).  The reasons for those shifts are beyond the scope of this analysis.  However, a time lapse analysis could shed some light on growth patterns. If the client wishes to move forward, I would suggest the following:  
