@@ -1,5 +1,5 @@
 # Capstone-Project
-Spatial Analysis of Chicago Crime Data
+Analyzing the Spatial and Demographic Characteristics of Chicago Crime to Inform Resource Deployment
 
 ## Overview
 This is my Capstone Project for Springboard's course, Foundations of Data Science.  The project results are for a fictitious “client” (the Chicago Police) requesting analytic support for infrastructure investment decisions.  The purpose of the analysis was to determine significant spatial, temporal, and demographic crime patterns that could be used to guide infrastructure investments and/or improve policing patterns. I examined Chicago Crime Data from several angles and utilized multiple visual methods including the following:
@@ -23,14 +23,14 @@ My initial, spatial hypothesis was as follows:
 
 ## Exploration Process
 
-After setting up the superset of data, I started by exploring any relationships between daily/monthly crime rates [initially defined as count/community population] by sub-category and the following:
+After setting up the superset of data, I started by exploring relationships between daily/monthly crime rates [initially defined as count/community population] by sub-category and the following:
 -	Various Demographics
 -	Location Descriptions
 -	Weather [temperature and precipitation]
 -	Proximity Metrics
 -	Temporal Charateristics
 
-I also considered building a predictive model, but I found that my story line was getting spread too thin, so I ended up focusing on crime’s spatial characteristics.  Also, assuming that communities might have an outsized political effect on enacting any proposed solution, I framed the final story by community crime density defined as count/km^2, dropped the weather analysis, and refined the demographics down to a few key stats.  
+I also considered building a predictive model, but I found that the story line was getting spread too thin, so I ended up focusing on crime’s spatial characteristics.  Also, assuming that communities might have an outsized political effect on enacting any proposed solution, I framed the final story by community crime density defined as count/km^2, dropped the weather analysis, and refined the demographics down to a few key stats.  
 
 In all, this was a very instructive exercise in working with geo-spatial data.  Thanks to a lot of time spent exporing the data, I learned a great deal about spatial visualization methods and regression models (both linear and non-linear).  I hope you enjoy the "final" product.
 
