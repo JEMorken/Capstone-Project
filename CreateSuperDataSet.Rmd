@@ -32,8 +32,16 @@ library(classInt) #not using
  
 ### Read in the crime data  
 ```{r read_data}
+# Read in Sample CSV version if you got the sample data from my springboard account.
+
 setwd("D:/Users/Jonathan Morken/Documents/GitHub/Capstone Project/")
 crime_df <- read.table("data/crimestxt.txt", sep = "\t", header = TRUE)
+
+#Write sample file for Springboard:
+#set.seed(123)
+#crime_df_Sample <- sample_n(crime_df,size = 200000)
+#write.csv(crime_df_Sample, file = "Data/crimestxtSample.csv", row.names = FALSE)
+
 ```
 
 #### A quick look at the data structure shows 17 variables:
